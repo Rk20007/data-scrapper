@@ -8,6 +8,8 @@ export function backendUrl(): string {
 
 export const TOKEN_COOKIE = "le_token";
 
+
+
 /** Server-side fetch to the FastAPI backend using the session cookie. */
 export async function api<T = any>(path: string, init: RequestInit = {}): Promise<T> {
   const token = (await cookies()).get(TOKEN_COOKIE)?.value;
@@ -30,4 +32,6 @@ export function qs(params: Record<string, string | string[] | undefined>): strin
   }
   const s = sp.toString();
   return s ? `?${s}` : "";
+
+  
 }
