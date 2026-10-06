@@ -9,3 +9,5 @@ frontend/.next/
 .env.*
 !.env.example
 *.tsbuildinfo
+backend/*.log
+backend/celerybeat-schedule*

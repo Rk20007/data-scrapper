@@ -195,6 +195,7 @@ class AIService:
             )
         except Exception as exc:  # network / API errors
             raise AIError(str(exc)) from exc
+        record_usage(schema.__name__, resp.usage)
         msg = resp.choices[0].message
         if msg.refusal or msg.parsed is None:
             raise AIError(f"Model refused or returned no parse: {msg.refusal}")
@@ -262,6 +263,65 @@ def _fmt(d: dict) -> str:
             v = "; ".join(str(x) for x in v)
         lines.append(f"- {k}: {v}")
     return "\n".join(lines) or "- (none)"
+
+
+def record_usage(kind: str, usage) -> None:
+    """Log tokens + cost of one call and add it to per-day totals in Redis (ai:usage:YYYY-MM-DD)."""
+    if usage is None:
+        return
+    prompt = usage.prompt_tokens or 0
+    completion = usage.completion_tokens or 0
+    details = getattr(usage, "prompt_tokens_details", None)
+    cached = (getattr(details, "cached_tokens", 0) or 0) if details else 0
+    usd = (
+        (prompt - cached) * settings.openai_input_usd_per_m
+        + cached * settings.openai_cached_input_usd_per_m
+        + completion * settings.openai_output_usd_per_m
+    ) / 1_000_000
+    log.info("AI usage %s: in=%d (cached %d) out=%d cost=$%.6f", kind, prompt, cached, completion, usd)
+    try:
+        from app.services.redis_client import get_redis
+
+        key = f"ai:usage:{date.today().isoformat()}"
+        pipe = get_redis().pipeline()
+        pipe.hincrby(key, "calls", 1)
+        pipe.hincrby(key, f"calls:{kind}", 1)
+        pipe.hincrby(key, "input_tokens", prompt)
+        pipe.hincrby(key, "output_tokens", completion)
+        pipe.hincrbyfloat(key, "usd", usd)
+        pipe.hincrbyfloat(key, f"usd:{kind}", usd)
+        pipe.expire(key, 60 * 60 * 24 * 120)
+        pipe.execute()
+    except Exception:  # noqa: BLE001 — usage accounting must never break the pipeline
+        log.debug("Could not record AI usage in Redis", exc_info=True)
+
+
+def usage_summary(days: int = 30) -> dict:
+    """Per-day AI usage for the last `days` days, newest first, plus totals."""
+    from datetime import timedelta
+
+    from app.services.redis_client import get_redis
+
+    rows, total_usd, total_calls = [], 0.0, 0
+    try:
+        r = get_redis()
+        for i in range(days):
+            d = (date.today() - timedelta(days=i)).isoformat()
+            h = r.hgetall(f"ai:usage:{d}")
+            if not h:
+                continue
+            usd = float(h.get("usd", 0))
+            calls = int(h.get("calls", 0))
+            by_kind = {k.split(":", 1)[1]: round(float(v), 6) for k, v in h.items() if k.startswith("usd:")}
+            rows.append({"date": d, "calls": calls, "input_tokens": int(h.get("input_tokens", 0)),
+                         "output_tokens": int(h.get("output_tokens", 0)), "usd": round(usd, 6),
+                         "inr": round(usd * settings.usd_to_inr, 2), "usd_by_kind": by_kind})
+            total_usd += usd
+            total_calls += calls
+    except Exception:  # noqa: BLE001
+        pass
+    return {"days": rows, "total_calls": total_calls, "total_usd": round(total_usd, 4),
+            "total_inr": round(total_usd * settings.usd_to_inr, 2), "model": settings.openai_model}
 
 
 _NUM_RE = re.compile(r"\d[\d,]*(?:\.\d+)?")

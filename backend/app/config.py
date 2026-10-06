@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-4.1-mini"
     openai_max_input_chars: int = 14000
+    # USD per 1M tokens, used to report AI spend (gpt-4.1-mini list price)
+    openai_input_usd_per_m: float = 0.40
+    openai_cached_input_usd_per_m: float = 0.10
+    openai_output_usd_per_m: float = 1.60
+    usd_to_inr: float = 88.0
 
     # Web search provider: serpapi | google_cse | none
     search_provider: str = "none"

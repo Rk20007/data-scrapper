@@ -143,6 +143,13 @@ def put_settings(body: dict, db: Session = Depends(get_db)):
     return {"runtime": asdict(rt)}
 
 
+@router.get("/ai-usage")
+def ai_usage(days: int = 30):
+    from app.services.ai import usage_summary
+
+    return usage_summary(min(max(days, 1), 120))
+
+
 # ---------------------------------------------------------------- jobs
 
 JOBS = {
