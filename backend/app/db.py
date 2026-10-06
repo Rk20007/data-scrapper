@@ -14,7 +14,16 @@ class Base(DeclarativeBase):
 def _make_engine(url: str):
     if url.startswith("sqlite"):
         return create_engine(url, connect_args={"check_same_thread": False})
-    return create_engine(url, pool_pre_ping=True, pool_size=10, max_overflow=20)
+    # prepare_threshold=None: no server-side prepared statements, which break behind
+    # transaction-mode poolers such as Neon's "-pooler" endpoint / PgBouncer.
+    return create_engine(
+        url,
+        pool_pre_ping=True,
+        pool_size=5,
+        max_overflow=10,
+        pool_recycle=300,
+        connect_args={"prepare_threshold": None},
+    )
 
 
 engine = _make_engine(settings.database_url)
