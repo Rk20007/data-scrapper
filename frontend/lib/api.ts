@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 export function backendUrl(): string {
   return (process.env.BACKEND_URL ?? "http://localhost:8000").replace(/\/+$/, "");
 }
+
 export const TOKEN_COOKIE = "le_token";
 
 /** Server-side fetch to the FastAPI backend using the session cookie. */
