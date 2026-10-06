@@ -1,14 +1,17 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-export const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8000";
+/** Backend base URL. On Vercel this is injected at runtime by the service binding; read it per request. */
+export function backendUrl(): string {
+  return (process.env.BACKEND_URL ?? "http://localhost:8000").replace(/\/+$/, "");
+}
 export const TOKEN_COOKIE = "le_token";
 
 /** Server-side fetch to the FastAPI backend using the session cookie. */
 export async function api<T = any>(path: string, init: RequestInit = {}): Promise<T> {
   const token = (await cookies()).get(TOKEN_COOKIE)?.value;
   if (!token) redirect("/login");
-  const res = await fetch(`${BACKEND_URL}/api${path}`, {
+  const res = await fetch(`${backendUrl()}/api${path}`, {
     ...init,
     cache: "no-store",
     headers: { ...(init.headers ?? {}), Authorization: `Bearer ${token}`, "Content-Type": "application/json" },

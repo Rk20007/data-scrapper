@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { BACKEND_URL, TOKEN_COOKIE } from "@/lib/api";
+import { backendUrl, TOKEN_COOKIE } from "@/lib/api";
 
 async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
   const token = req.cookies.get(TOKEN_COOKIE)?.value;
   if (!token) return NextResponse.json({ detail: "Not authenticated" }, { status: 401 });
   const { path } = await ctx.params;
-  const target = `${BACKEND_URL}/api/${path.map(encodeURIComponent).join("/")}${req.nextUrl.search}`;
+  const target = `${backendUrl()}/api/${path.map(encodeURIComponent).join("/")}${req.nextUrl.search}`;
   const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
   const ctype = req.headers.get("content-type");
   if (ctype) headers["Content-Type"] = ctype;

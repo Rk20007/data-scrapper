@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { BACKEND_URL, TOKEN_COOKIE } from "@/lib/api";
+import { backendUrl, TOKEN_COOKIE } from "@/lib/api";
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
-  const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
+  const res = await fetch(`${backendUrl()}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email: body.email ?? "", password: body.password ?? "" }),
