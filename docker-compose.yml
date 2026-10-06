@@ -1,0 +1,86 @@
+x-backend: &backend
+  build: ./backend
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-leads}:${POSTGRES_PASSWORD:-leads}@postgres:5432/${POSTGRES_DB:-leads}
+    REDIS_URL: redis://redis:6379/0
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-leads}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-leads}
+      POSTGRES_DB: ${POSTGRES_DB:-leads}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-leads}"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    <<: *backend
+    command: sh -c "alembic upgrade head && python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --proxy-headers"
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      retries: 10
+
+  # Crawling, AI classification, enrichment, planning
+  worker:
+    <<: *backend
+    command: celery -A app.workers.celery_app worker -Q default,crawl -c 4 --loglevel=INFO
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # Email sending + inbox polling: single process so sends are strictly serial
+  email-worker:
+    <<: *backend
+    command: celery -A app.workers.celery_app worker -Q email -c 1 --loglevel=INFO -n email@%h
+    depends_on:
+      api:
+        condition: service_healthy
+
+  beat:
+    <<: *backend
+    command: celery -A app.workers.celery_app beat --loglevel=INFO --schedule /tmp/celerybeat-schedule
+    depends_on:
+      api:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    environment:
+      BACKEND_URL: http://api:8000
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
